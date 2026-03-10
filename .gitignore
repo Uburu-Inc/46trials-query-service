@@ -14,3 +14,4 @@ build/
 .cursor/
 .cursorrules
 .cursorignore
+sql_query_builder_extract/

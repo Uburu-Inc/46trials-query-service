@@ -1,9 +1,21 @@
 # Return counts based on the queries provided
 
+# Map payload column names to actual view column names (view uses aliases)
+COLUMN_ALIAS_MAP = {
+    "history_of_presenting_complaint": "hpc",
+    "administrative_details": "admin_details",
+}
+
+
+def _resolve_column(column: str) -> str:
+    """Resolve payload column name to actual view column name."""
+    return COLUMN_ALIAS_MAP.get(column, column)
+
+
 def generate_count_query(payload: list) -> str:
     """
     Generate a dynamic COUNT query for v_records_safe from payload filters.
-    'isSelected' is ignored — the query only uses 'entries' and 'exclude'.
+    Only applies filters where isSelected is True (or entries is non-empty).
 
     Args:
         payload (list): List of filter dictionaries, e.g.,
@@ -15,14 +27,16 @@ def generate_count_query(payload: list) -> str:
         str: Ready-to-run SQL COUNT query
     """
 
-    # Columns classified by type
+    # Columns classified by type (use view column names: hpc, admin_details)
     multi_string_columns = {
         "diagnosis",
         "gender",
         "history_of_presenting_complaint",
+        "hpc",
         "investigation",
         "medication",
         "administrative_details",
+        "admin_details",
     }
 
     single_string_columns = {"firstname", "middlename", "lastname"}
@@ -54,28 +68,30 @@ def generate_count_query(payload: list) -> str:
         if not entries:
             continue
 
+        # Resolve to actual view column name (e.g. history_of_presenting_complaint -> hpc)
+        db_column = _resolve_column(column)
+
         # Determine if the filter is meant to exclude matching rows
         exclude = str(item.get("exclude", "")).strip().lower() == "true"
 
         # Numeric columns: use >= by default, < if exclude is True
         if column in numeric_columns:
             op = "<" if exclude else ">="
-            conditions.append(f"{column} {op} {entries}")
+            conditions.append(f"{db_column} {op} {entries}")
 
         # Date columns: use = by default, != if exclude is True
         elif column in date_columns:
             op = "!=" if exclude else "="
-            conditions.append(f"{column} {op} '{entries}'")
+            conditions.append(f"{db_column} {op} '{entries}'")
 
         # Single-value string columns (e.g., firstname, lastname)
         elif column in single_string_columns:
             val_safe = entries.replace("'", "''").lower()  # Escape single quotes
             op = "NOT LIKE" if exclude else "LIKE"
-            conditions.append(f"LOWER({column}) {op} '%{val_safe}%'")
+            conditions.append(f"LOWER({db_column}) {op} '%{val_safe}%'")
 
-        # Multi-value string columns (e.g., diagnosis, gender)
+        # Multi-value string columns: include = OR (match any), exclude = AND (match none)
         elif column in multi_string_columns:
-            # Split comma-separated values and skip empty ones
             values = [v.strip() for v in entries.split(",") if v.strip()]
             if not values:
                 continue
@@ -83,9 +99,9 @@ def generate_count_query(payload: list) -> str:
             for v in values:
                 v_safe = v.replace("'", "''").lower()  # Escape single quotes
                 op = "NOT LIKE" if exclude else "LIKE"
-                sub_conditions.append(f"LOWER({column}) {op} '%{v_safe}%'")
-            # Combine multiple values with OR inside parentheses
-            conditions.append("(" + " OR ".join(sub_conditions) + ")")
+                sub_conditions.append(f"LOWER({db_column}) {op} '%{v_safe}%'")
+            join_op = " AND " if exclude else " OR "
+            conditions.append("(" + join_op.join(sub_conditions) + ")")
 
     # Combine all conditions with AND
     if conditions:

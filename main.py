@@ -46,8 +46,7 @@ def fetch_records(platform: str, db: str, query_parameters: DBQuery):
 
 @app.post("/fetch-record-via-endpoint/{db}")
 def fetch_records_via_endpoint(db: str, query_parameters: APIQuery):
-    print(query_parameters)
-    return service.run_query_via_endpoint(db, query_parameters)
+    return service.run_query_via_endpoint(db, query_parameters.query)
 
 @app.get("/health")
 def health_check():
