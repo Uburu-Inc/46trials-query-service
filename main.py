@@ -29,6 +29,7 @@ class DBQuery(BaseModel):
 class APIQuery(BaseModel):
     query: str
 
+# Fetch record via query parameters
 @app.post("/fetch-record/{platform}/{db}")
 def fetch_records(platform: str, db: str, query_parameters: DBQuery):
 
@@ -44,10 +45,12 @@ def fetch_records(platform: str, db: str, query_parameters: DBQuery):
         db, data["query_parameters"], data["query_parameters"]["query_type"]
     )
 
+# Fetch record via endpoint
 @app.post("/fetch-record-via-endpoint/{db}")
 def fetch_records_via_endpoint(db: str, query_parameters: APIQuery):
     return service.run_query_via_endpoint(db, query_parameters.query)
 
+# Health check
 @app.get("/health")
 def health_check():
     return service.health_check()
