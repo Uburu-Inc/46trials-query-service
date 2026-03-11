@@ -33,12 +33,12 @@ class Service:
         try:
             if query_type == "count":
                 query = generate_count_query(db_query_parameters["query_value"])
-                print(query, '<=== counter')
+                print(query, '<=== Count query')
                 records = query_db(db_path, query)
                 return response(200, True, "Success", records[0])
             elif query_type == "dataset":
                 query = generate_dataset_query(db_query_parameters["query_value"])
-                print(query, '<=== dataset')
+                print(query, '<=== Dataset query')
                 records = query_db(db_path, query)
                 return response(200, True, "Success", records)
             else:

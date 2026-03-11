@@ -18,7 +18,7 @@ query_schema = {
                     "type": "dict",
                     "schema": {
                         "column": {"type": "string", "required": True, "empty": False},
-                        "entries": {"type": "string", "required": True, "empty": False},
+                        "entries": {"type": "string", "required": True},
                         "exclude": {"type": "string", "required": True},
                         "id": {"type": "string", "required": True, "empty": False},
                         "isSelected": {"type": "boolean", "required": True},
