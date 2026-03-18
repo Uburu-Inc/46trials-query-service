@@ -24,6 +24,7 @@ service = Service()
 
 class DBQuery(BaseModel):
     query_parameters: dict
+    limit: dict
 
 
 class APIQuery(BaseModel):
@@ -42,7 +43,10 @@ def fetch_records(platform: str, db: str, query_parameters: DBQuery):
     if platform not in ["46_trials", "one_record"]:
         return response(400, False, "Invalid platform")
     return service.run_query(
-        db, data["query_parameters"], data["query_parameters"]["query_type"]
+        db,
+        data["query_parameters"],
+        data["query_parameters"]["query_type"],
+        data.get("limit"),
     )
 
 # Fetch record via endpoint

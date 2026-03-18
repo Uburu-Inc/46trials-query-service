@@ -39,6 +39,7 @@ def _add_conditions_for_value(
     is_exclude: bool,
     multi_string_columns: set,
     single_string_columns: set,
+    exact_match_string_columns: set,
     numeric_columns: set,
     date_columns: set,
 ) -> None:
@@ -61,6 +62,13 @@ def _add_conditions_for_value(
             v_safe = v.replace("'", "''")
             conditions.append(f"{db_column} {op} '{v_safe}'")
 
+    elif db_column in exact_match_string_columns:
+        # Exact match, value as-is (e.g. gender = 'Female' or gender = 'Male')
+        op = "!=" if is_exclude else "="
+        for v in values:
+            v_safe = v.replace("'", "''")
+            conditions.append(f"{db_column} {op} '{v_safe}'")
+
     elif db_column in single_string_columns:
         op = "NOT LIKE" if is_exclude else "LIKE"
         for v in values:
@@ -77,28 +85,45 @@ def _add_conditions_for_value(
         conditions.append("(" + join_op.join(sub_conditions) + ")")
 
 
-def generate_count_query(payload: list) -> str:
+def _add_date_range_conditions(conditions: list, limit: dict | None) -> None:
+    """
+    Add visit_year >= startDate and visit_year <= endDate from limit if present.
+    startDate/endDate are expected to be year strings like '1999', '2002'.
+    """
+    if not limit:
+        return
+    start_raw = (limit.get("startDate") or "").strip()
+    end_raw = (limit.get("endDate") or "").strip()
+
+    if start_raw:
+        try:
+            start_year = int(start_raw)
+            conditions.append(f"visit_year >= {start_year}")
+        except ValueError:
+            pass
+    if end_raw:
+        try:
+            end_year = int(end_raw)
+            conditions.append(f"visit_year <= {end_year}")
+        except ValueError:
+            pass
+
+
+def generate_count_query(payload: list, limit: dict | None = None) -> str:
     """
     Generate a dynamic COUNT query for v_records_safe from payload filters.
 
     entries = value(s) to INCLUDE (match): e.g. "sickle cell" -> LIKE '%sickle cell%'
     exclude = value(s) to EXCLUDE (not match): e.g. "emergency" -> NOT LIKE '%emergency%'
 
-    Either or both can be non-empty per item. Empty entries/exclude are skipped.
-
-    Args:
-        payload (list): List of filter dicts, e.g.
-            [
-                {"column": "diagnosis", "entries": "sickle cell", "exclude": "malaria"},
-                {"column": "admin_details", "entries": "", "exclude": "emergency"}
-            ]
-    Returns:
-        str: Ready-to-run SQL COUNT query
+    limit (optional): { "startDate": \"1999\", \"endDate\": \"2002\", \"sampleSize\": n }
+    startDate/endDate add a visit_year range; sampleSize is ignored for count.
     """
     multi_string_columns = {
-        "diagnosis", "gender", "hpc", "investigation", "medication", "admin_details",
+        "diagnosis", "hpc", "investigation", "medication", "admin_details",
     }
     single_string_columns = set()  # firstname, middlename, lastname no longer used
+    exact_match_string_columns = {"gender"}  # Male/Female, exact match, no lowercasing
     numeric_columns = {
         "age_years", "database_id", "record_id", "visit_id",
     }
@@ -107,28 +132,37 @@ def generate_count_query(payload: list) -> str:
     query = "SELECT COUNT(DISTINCT visit_id) AS eligible_count FROM v_records_safe"
     conditions = []
 
+    # First pass: all include (entries) conditions, in payload order
     for item in payload:
         column = item.get("column")
         if not column:
             continue
-
         entries_str = str(item.get("entries", "")).strip()
-        exclude_str = str(item.get("exclude", "")).strip()
-        if not entries_str and not exclude_str:
+        if not entries_str:
             continue
-
         db_column = _resolve_column(column)
+        _add_conditions_for_value(
+            conditions, db_column, column, entries_str, False,
+            multi_string_columns, single_string_columns, exact_match_string_columns,
+            numeric_columns, date_columns,
+        )
 
-        if entries_str:
-            _add_conditions_for_value(
-                conditions, db_column, column, entries_str, False,
-                multi_string_columns, single_string_columns, numeric_columns, date_columns,
-            )
-        if exclude_str:
-            _add_conditions_for_value(
-                conditions, db_column, column, exclude_str, True,
-                multi_string_columns, single_string_columns, numeric_columns, date_columns,
-            )
+    # Second pass: all exclude conditions, in payload order
+    for item in payload:
+        column = item.get("column")
+        if not column:
+            continue
+        exclude_str = str(item.get("exclude", "")).strip()
+        if not exclude_str:
+            continue
+        db_column = _resolve_column(column)
+        _add_conditions_for_value(
+            conditions, db_column, column, exclude_str, True,
+            multi_string_columns, single_string_columns, exact_match_string_columns,
+            numeric_columns, date_columns,
+        )
+
+    _add_date_range_conditions(conditions, limit)
 
     if conditions:
         query += " WHERE " + " AND ".join(conditions)

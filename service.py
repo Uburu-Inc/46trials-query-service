@@ -23,7 +23,13 @@ class Service:
         return response(200, True, "Success", records)
 
     # Fetch records from database through the sql query generator
-    def run_query(self, db: str, db_query_parameters: dict, query_type: str) -> dict:
+    def run_query(
+        self,
+        db: str,
+        db_query_parameters: dict,
+        query_type: str,
+        limit: dict | None = None,
+    ) -> dict:
         # Validate database
         if db not in db_files:
             return response(404, False, "Database not found", None)
@@ -32,13 +38,17 @@ class Service:
 
         try:
             if query_type == "count":
-                query = generate_count_query(db_query_parameters["query_value"])
-                print(query, '<=== Count query')
+                query = generate_count_query(
+                    db_query_parameters["query_value"], limit=limit
+                )
+                print(query, "<=== Count query")
                 records = query_db(db_path, query)
                 return response(200, True, "Success", records[0])
             elif query_type == "dataset":
-                query = generate_dataset_query(db_query_parameters["query_value"])
-                print(query, '<=== Dataset query')
+                query = generate_dataset_query(
+                    db_query_parameters["query_value"], limit=limit
+                )
+                print(query, "<=== Dataset query")
                 records = query_db(db_path, query)
                 return response(200, True, "Success", records)
             else:
